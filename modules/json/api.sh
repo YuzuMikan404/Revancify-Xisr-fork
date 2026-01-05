@@ -12,6 +12,7 @@ parseJsonFromAPI() {
                 --arg NUMBER "$NUMBER" \
                 --arg BOOLEAN "$BOOLEAN" \
                 --arg STRINGARRAY "$STRINGARRAY" '
+                (if type == "object" and has("patches") then .patches else . end) |
                 reduce .[] as {
                     name: $PATCH,
                     use: $USE,

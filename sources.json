@@ -38,5 +38,14 @@
             "json": "https://raw.githubusercontent.com/kitadai31/revanced-patches-android6-7/refs/heads/revanced-extended/patches.json",
             "version": null
         }
+    },
+    {
+        "source": "Morphe",
+        "repository": "MorpheApp/morphe-patches",
+        "type": "morphe",
+        "api": {
+            "json": "https://raw.githubusercontent.com/MorpheApp/morphe-patches/refs/heads/main/patches-list.json",
+            "version": null
+        }
     }
 ]

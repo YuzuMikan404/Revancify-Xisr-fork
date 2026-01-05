@@ -88,7 +88,7 @@ installDependencies() {
     CTR=0 && while [ ! -e "$AAPT2" ]; do
         [ $CTR -gt 2 ] && return 1
         echo -e "\nDownloading aapt2...\n"
-        readarray -t RESPONSE < <(curl -s "https://api.github.com/repos/decipher3114/binaries/releases/latest" | jq -r --arg ARCH "$(getprop ro.product.cpu.abi)" '.assets[] | if (.name | test($ARCH)) then (.browser_download_url, .size) else empty end' 2> /dev/null)
+        readarray -t RESPONSE < <(curl -s "https://api.github.com/repos/Xisrr1/aapt2-stripped/releases/latest" | jq -r --arg ARCH "$(getprop ro.product.cpu.abi)" '.assets[] | if (.name | test($ARCH)) then (.browser_download_url, .size) else empty end' 2> /dev/null)
         [ "${#RESPONSE[@]}" -eq 0 ] && return 1
         wget -q --show-progress "${RESPONSE[0]}" -O "$AAPT2"
         chmod +x "$AAPT2"
@@ -133,6 +133,11 @@ fetchSrc() {
     STABLE_DATE=$(echo "$RELEASES_JSON" | jq -r '[.[] | select(.prerelease == false)][0].published_at')
 
     TAG="$STABLE_TAG"
+
+    # Migration
+    if [ -e "$SRC/bin/aapt2" ] && [ "$(stat -c %s "$SRC/bin/aapt2" 2>/dev/null)" -gt 5000000 ]; then
+        rm "$SRC/bin/aapt2"
+    fi
 
     if [ "$REVANCIFY_XISR_BETA" = "on" ]; then
         PRE_TAG=$(echo "$RELEASES_JSON" | jq -r '[.[] | select(.prerelease == true)][0].tag_name')
