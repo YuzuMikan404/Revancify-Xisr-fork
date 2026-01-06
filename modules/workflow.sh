@@ -5,7 +5,8 @@ initiateWorkflow() {
     while true; do
         case "$TASK" in
             "CHOOSE_APP")
-                chooseApp || break
+                chooseApp
+                [ "$TASK" == "CHOOSE_APP" ] && break
                 ;;
             "DOWNLOAD_APP")
                 downloadApp || continue
@@ -33,4 +34,5 @@ initiateWorkflow() {
                 ;;
         esac
     done
+    unset TASK
 }

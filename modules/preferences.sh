@@ -32,9 +32,9 @@ configure() {
             configure
             return
         fi
-        exec ./xisr
+        exec xisr
     elif [ "$PREV_BETA" = "on" ] && [ "$REVANCIFY_XISR_BETA" = "off" ]; then
-        exec ./xisr
+        exec xisr
     fi
 
     [ "$LIGHT_THEME" == "on" ] && THEME="LIGHT" || THEME="DARK"

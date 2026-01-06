@@ -85,10 +85,13 @@ installDependencies() {
     AAPT2="$SRC/bin/aapt2"
     APK_EDITOR="$SRC/bin/APKEditor.jar"
 
+    # Migration
+    [ -e "$AAPT2" ] && [ "$(stat -c %s "$AAPT2" 2>/dev/null)" -gt 5000000 ] && rm "$AAPT2"
+
     CTR=0 && while [ ! -e "$AAPT2" ]; do
         [ $CTR -gt 2 ] && return 1
         echo -e "\nDownloading aapt2...\n"
-        readarray -t RESPONSE < <(curl -s "https://api.github.com/repos/decipher3114/binaries/releases/latest" | jq -r --arg ARCH "$(getprop ro.product.cpu.abi)" '.assets[] | if (.name | test($ARCH)) then (.browser_download_url, .size) else empty end' 2> /dev/null)
+        readarray -t RESPONSE < <(curl -s "https://api.github.com/repos/Xisrr1/aapt2-stripped/releases/latest" | jq -r --arg ARCH "$(getprop ro.product.cpu.abi)" '.assets[] | if (.name | test($ARCH)) then (.browser_download_url, .size) else empty end' 2> /dev/null)
         [ "${#RESPONSE[@]}" -eq 0 ] && return 1
         wget -q --show-progress "${RESPONSE[0]}" -O "$AAPT2"
         chmod +x "$AAPT2"
@@ -159,6 +162,7 @@ fetchSrc() {
         rm -rf Revancify-Xisr-* &> /dev/null
         cp -f "$SRC/xisr" "$PREFIX/bin/xisr"
         chmod +x "$PREFIX/bin/xisr"
+        exec "$PREFIX/bin/xisr" "$@"
     else
         echo -e "Unable to install Revancify Xisr $TAG !!\nPlease try again with proper Internet"
         exit 1

@@ -35,9 +35,6 @@ parsePatchesJson() {
             unset APPS_LIST
             rm assets/"$SOURCE"/Apps-*.json &> /dev/null
             fetchAppsInfo || return 1
-            if [ "$TASK" == "IMPORT_APP" ]; then
-                return 1
-            fi
         fi
     done
 }
