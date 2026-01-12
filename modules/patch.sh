@@ -36,6 +36,16 @@ patchApp() {
     fi
 
     SOURCE_TYPE=$(jq -r --arg SOURCE "$SOURCE" '.[] | select(.source == $SOURCE) | .type // "revanced"' sources.json)
+    # Migration
+    if [ -f "$STORAGE/xisr.keystore" ]; then
+        if grep -qa "Morphe Key" "$STORAGE/xisr.keystore"; then
+            mv "$STORAGE/xisr.keystore" "$STORAGE/morphe.keystore"
+        elif grep -qa "ReVanced Key" "$STORAGE/xisr.keystore"; then
+            mv "$STORAGE/xisr.keystore" "$STORAGE/revanced.keystore"
+        else
+            rm "$STORAGE/xisr.keystore"
+        fi
+    fi
 
     if [ "$SOURCE_TYPE" == "morphe" ]; then
         readarray -t ARGUMENTS < <(
@@ -74,7 +84,7 @@ patchApp() {
             --exclusive \
             "${ARGUMENTS[@]}" \
             --custom-aapt2-binary="./bin/aapt2" \
-            --keystore="$STORAGE/xisr.keystore" \
+            --keystore="$STORAGE/morphe.keystore" \
             -o "apps/$APP_NAME/$APP_VER-$SOURCE.apk" \
             "apps/$APP_NAME/$APP_VER.apk" |&
             tee -a "$STORAGE/patch_log.txt" |
@@ -121,7 +131,7 @@ patchApp() {
             --out="apps/$APP_NAME/$APP_VER-$SOURCE.apk" \
             "${ARGUMENTS[@]}" \
             --custom-aapt2-binary="./bin/aapt2" \
-            --keystore="$STORAGE/xisr.keystore" \
+            --keystore="$STORAGE/revanced.keystore" \
             "apps/$APP_NAME/$APP_VER.apk" |&
             tee -a "$STORAGE/patch_log.txt" |
             "${DIALOG[@]}" \
