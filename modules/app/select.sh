@@ -25,6 +25,7 @@ chooseApp() {
             $SELECTED_APP |
             "PKG_NAME=\(.pkgName)
             APP_NAME=\(.appName)
+            APKMIRROR_APP_URL=\(.appUrl)
             APKMIRROR_APP_NAME=\(.apkmirrorAppName)"
         ')
             TASK="DOWNLOAD_APP"
@@ -37,6 +38,7 @@ chooseApp() {
             ;;
     esac
     if [ "$APP_NAME" != "$SELECTED_APP" ]; then
-        unset VERSIONS_LIST
+        unset VERSIONS_LIST PAGES_CACHE
+        CURRENT_PAGE=1
     fi
 }

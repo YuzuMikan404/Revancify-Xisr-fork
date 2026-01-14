@@ -65,6 +65,7 @@ fetchAppsInfo() {
                             ) |
                             split("-")[:4] |
                             join("-"),
+                        "appUrl": $APP_URL,
                         "apkmirrorAppName": (
                                 $APP_URL |
                                 sub("-wear-os|-android-automotive"; "") |

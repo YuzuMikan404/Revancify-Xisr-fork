@@ -1,121 +1,116 @@
 #!/usr/bin/bash
 
-scrapeVersionsList() {
-    local PAGE_CONTENTS PAGE_JSON MERGED_JSON
-    local IDX MAX_PAGE_COUNT
+declare -A PAGES_CACHE
+CURRENT_PAGE=1
 
-    MAX_PAGE_COUNT=5
+fetchPage() {
+    local PAGE_NUM="$1"
 
-    for ((IDX = 1; IDX <= MAX_PAGE_COUNT; IDX++)); do
-        TMP_FILES[IDX]=$(mktemp)
-        "${CURL[@]}" -A "$USER_AGENT" "https://www.apkmirror.com/uploads/page/$IDX/?appcategory=$APKMIRROR_APP_NAME" > "${TMP_FILES[$IDX]}" 2> /dev/null &
-    done
-    wait
+    [[ -n "${PAGES_CACHE[$PAGE_NUM]}" ]] && return 0
 
-    for ((IDX = 1; IDX <= MAX_PAGE_COUNT; IDX++)); do
-        PAGE_CONTENTS[IDX]=$(cat "${TMP_FILES[$IDX]}")
-        rm -f "${TMP_FILES[$IDX]}"
-    done
+    notify info "Please Wait !!\n$([[ $PAGE_NUM -eq 1 ]] && echo "Scraping versions list for $APP_NAME from apkmirror.com..." || echo "Fetching next page...")"
 
-    for ((IDX = 1; IDX <= MAX_PAGE_COUNT; IDX++)); do
-        PAGE_JSON[IDX]=$(
-            pup -c 'div.widget_appmanager_recentpostswidget div.listWidget div:not([class]) json{}' <<< "${PAGE_CONTENTS[$IDX]}" |
-                jq -rc '
-                .[].children as $CHILDREN |
-                {
-                    version: $CHILDREN[1].children[0].children[1].text,
-                    info: $CHILDREN[0].children[0].children[1].children[0].children[0].children[0]
-                } |
-                {
-                    version: .version,
-                    tag: (
-                        .info.text | ascii_downcase |
-                        if test("beta") then
-                            "[BETA]"
-                        elif test("alpha") then
-                            "[ALPHA]"
-                        else
-                            "[STABLE]"
-                        end
-                    ),
-                    url: .info.href
-                }
-            '
-        )
-    done
+    local PAGE_CONTENT
+    PAGE_CONTENT=$("${CURL[@]}" -A "$USER_AGENT" "https://www.apkmirror.com/uploads/page/$PAGE_NUM/?appcategory=$APKMIRROR_APP_NAME" 2>/dev/null)
 
-    MERGED_JSON=$(jq -s '.' <<< "$(printf '%s\n' "${PAGE_JSON[@]}")")
+    [[ -z "$PAGE_CONTENT" ]] && notify msg "Unable to fetch versions !!\nThere is some problem with your internet connection." && return 1
 
-    if [[ "$MERGED_JSON" == "[]" ]]; then
-        notify msg "Unable to fetch versions !!\nThere is some problem with your internet connection. Disable VPN or Change your network."
-        TASK="CHOOSE_APP"
-        return 1
+    PAGES_CACHE[$PAGE_NUM]=$(
+        pup -c 'div.widget_appmanager_recentpostswidget div.listWidget div:not([class]) json{}' <<< "$PAGE_CONTENT" |
+            jq -c '[.[].children as $CHILDREN | {
+                version: $CHILDREN[1].children[0].children[1].text,
+                info: $CHILDREN[0].children[0].children[1].children[0].children[0].children[0]
+            } | {
+                version: .version,
+                tag: (.info.text | ascii_downcase | if test("beta") then "[BETA]" elif test("alpha") then "[ALPHA]" else "[STABLE]" end),
+                url: .info.href
+            }]'
+    )
+}
+
+showRecommendedVersions() {
+    local SELECTED_VERSION EXIT_CODE
+
+    readarray -t RECOMMENDED_LIST < <(
+        jq -nrc --arg PKG_NAME "$PKG_NAME" --arg INSTALLED_VERSION "$INSTALLED_VERSION" --argjson AVAILABLE_PATCHES "$AVAILABLE_PATCHES" '
+            ($AVAILABLE_PATCHES[] | select(.pkgName == $PKG_NAME) | .versions // []) as $VERSIONS |
+            if ($VERSIONS | length) == 0 then empty
+            else $VERSIONS | reverse | .[] | . as $VER |
+                {version: $VER, tag: (if $VER == $INSTALLED_VERSION then "[INSTALLED]" else "[RECOMMENDED]" end), url: null},
+                "\($VER)|\(if $VER == $INSTALLED_VERSION then "[INSTALLED]" else "[RECOMMENDED]" end)"
+            end
+        '
+    )
+
+    if [ "${#RECOMMENDED_LIST[@]}" -eq 0 ]; then
+        showMoreVersions
+        return $?
     fi
 
-    readarray -t VERSIONS_LIST < <(
-        jq -rc \
-            --arg PKG_NAME "$PKG_NAME" \
-            --arg INSTALLED_VERSION "$INSTALLED_VERSION" \
-            --arg ALLOW_APP_VERSION_DOWNGRADE "$ALLOW_APP_VERSION_DOWNGRADE" \
-            --argjson AVAILABLE_PATCHES "$AVAILABLE_PATCHES" '
-            . as $ALL_VERSIONS |
-            (
-                $AVAILABLE_PATCHES[] |
-                select(.pkgName == $PKG_NAME) |
-                .versions
-            ) as $SUPPORTED_VERSIONS |
-            $ALL_VERSIONS |
-            map(
-                .version as $VERSION |
-                if ($SUPPORTED_VERSIONS | index($VERSION)) != null then
-                    .tag = "[RECOMMENDED]"
-                elif .version == $INSTALLED_VERSION then
-                    .tag = "[INSTALLED]"
-                else
-                    .
-                end
-            ) |
-            (
-                if any(.[]; .tag == "[RECOMMENDED]") then
-                    (first(.[] | select(.tag == "[RECOMMENDED]"))), "Auto Select|[RECOMMENDED]"
-                elif $INSTALLED_VERSION != "" then
-                    .[-1], "Auto Select|[INSTALLED]"
-                else
-                    empty
-                end
-            ),
-            (
-                .[] |
-                ., "\(.version)|\(.tag)"
-            )
-        ' <<< "$MERGED_JSON"
+    SELECTED_VERSION=$(
+        "${DIALOG[@]}" --title '| Recommended Versions |' --no-tags --column-separator "|" \
+            --ok-label 'Select' --cancel-label 'Back' --extra-button --extra-label 'More versions' \
+            --menu "$NAVIGATION_HINT" -1 -1 0 "${RECOMMENDED_LIST[@]}" 2>&1 >/dev/tty
     )
+    EXIT_CODE=$?
+
+    case "$EXIT_CODE" in
+        0)
+            APP_VER=$(jq -nrc --argjson V "$SELECTED_VERSION" '$V.version | sub(" "; ""; "g")')
+            APP_DL_URL="https://www.apkmirror.com${APKMIRROR_APP_URL}${APKMIRROR_APP_NAME}-$(echo "$APP_VER" | sed 's/\./-/g')-release/"
+            ;;
+        1) TASK="CHOOSE_APP"; return 1 ;;
+        3) showMoreVersions; return $? ;;
+    esac
+}
+
+showMoreVersions() {
+    local SELECTED_VERSION ACTION
+
+    while true; do
+        fetchPage "$CURRENT_PAGE" || return 1
+
+        readarray -t PAGE_LIST < <(
+            jq -rc --arg INSTALLED_VERSION "$INSTALLED_VERSION" --arg PKG_NAME "$PKG_NAME" --argjson AVAILABLE_PATCHES "$AVAILABLE_PATCHES" '
+                (($AVAILABLE_PATCHES[] | select(.pkgName == $PKG_NAME) | .versions) // []) as $SUPPORTED |
+                .[] | .version as $V |
+                if ($SUPPORTED | index($V)) != null then .tag = "[RECOMMENDED]"
+                elif $V == $INSTALLED_VERSION then .tag = "[INSTALLED]"
+                else . end |
+                ., "\(.version)|\(.tag)"
+            ' <<< "${PAGES_CACHE[$CURRENT_PAGE]}"
+        )
+
+        local MENU_LIST=()
+        [[ $CURRENT_PAGE -gt 1 ]] && MENU_LIST+=('{"action":"prev"}' '<<<<<')
+        MENU_LIST+=("${PAGE_LIST[@]}")
+        MENU_LIST+=('{"action":"next"}' '>>>>>')
+
+        if ! SELECTED_VERSION=$(
+            "${DIALOG[@]}" --title "| Version Selection Menu (Page $CURRENT_PAGE) |" --no-tags --column-separator "|" \
+                --ok-label 'Select' --cancel-label 'Back' \
+                --menu "$NAVIGATION_HINT" -1 -1 0 "${MENU_LIST[@]}" 2>&1 >/dev/tty
+        ); then
+            showRecommendedVersions
+            return $?
+        fi
+
+        ACTION=$(jq -r '.action // empty' <<< "$SELECTED_VERSION" 2>/dev/null)
+        case "$ACTION" in
+            prev) ((CURRENT_PAGE--)) ;;
+            next) ((CURRENT_PAGE++)) ;;
+            *)
+                APP_VER=$(jq -nrc --argjson V "$SELECTED_VERSION" '$V.version | sub(" "; ""; "g")')
+                APP_DL_URL=$(jq -nrc --argjson V "$SELECTED_VERSION" '"https://www.apkmirror.com" + $V.url')
+                return 0
+                ;;
+        esac
+    done
 }
 
 chooseVersion() {
     unset APP_VER APP_DL_URL
-    local INSTALLED_VERSION SELECTED_VERSION
     internet || return 1
     getInstalledVersion
-    if [ "${#VERSIONS_LIST[@]}" -eq 0 ]; then
-        notify info "Please Wait !!\nScraping versions list for $APP_NAME from apkmirror.com..."
-        scrapeVersionsList || return 1
-    fi
-    if ! SELECTED_VERSION=$(
-        "${DIALOG[@]}" \
-            --title '| Version Selection Menu |' \
-            --no-tags \
-            --column-separator "|" \
-            --default-item "$SELECTED_VERSION" \
-            --ok-label 'Select' \
-            --cancel-label 'Back' \
-            --menu "$NAVIGATION_HINT" -1 -1 0 \
-            "${VERSIONS_LIST[@]}" \
-            2>&1 > /dev/tty
-    ); then
-        TASK="CHOOSE_APP"
-        return 1
-    fi
-    APP_VER=$(jq -nrc --argjson SELECTED_VERSION "$SELECTED_VERSION" '$SELECTED_VERSION.version | sub(" "; ""; "g")')
-    APP_DL_URL=$(jq -nrc --argjson SELECTED_VERSION "$SELECTED_VERSION" '"https://www.apkmirror.com" + $SELECTED_VERSION.url')
+    showRecommendedVersions
 }
