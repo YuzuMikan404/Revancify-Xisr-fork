@@ -13,8 +13,6 @@ fetchPage() {
     local PAGE_CONTENT
     PAGE_CONTENT=$("${CURL[@]}" -A "$USER_AGENT" "https://www.apkmirror.com/uploads/page/$PAGE_NUM/?appcategory=$APKMIRROR_APP_NAME" 2>/dev/null)
 
-    [[ -z "$PAGE_CONTENT" ]] && notify msg "Unable to fetch versions !!\nThere is some problem with your internet connection." && return 1
-
     PAGES_CACHE[$PAGE_NUM]=$(
         pup -c 'div.widget_appmanager_recentpostswidget div.listWidget div:not([class]) json{}' <<< "$PAGE_CONTENT" |
             jq -c '[.[].children as $CHILDREN | {
@@ -26,6 +24,12 @@ fetchPage() {
                 url: .info.href
             }]'
     )
+
+    if [[ "${PAGES_CACHE[$PAGE_NUM]}" == "[]" ]]; then
+        notify msg "Unable to fetch versions !!\nThere is some problem with your internet connection. Disable VPN or Change your network."
+        TASK="CHOOSE_APP"
+        return 1
+    fi
 }
 
 showRecommendedVersions() {
@@ -91,8 +95,8 @@ showMoreVersions() {
                 --ok-label 'Select' --cancel-label 'Back' \
                 --menu "$NAVIGATION_HINT" -1 -1 0 "${MENU_LIST[@]}" 2>&1 >/dev/tty
         ); then
-            showRecommendedVersions
-            return $?
+            [[ ${#RECOMMENDED_LIST[@]} -gt 0 ]] && showRecommendedVersions && return $?
+            TASK="CHOOSE_APP"; return 1
         fi
 
         ACTION=$(jq -r '.action // empty' <<< "$SELECTED_VERSION" 2>/dev/null)
