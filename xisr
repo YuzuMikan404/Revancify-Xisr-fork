@@ -61,6 +61,7 @@ trap terminate SIGTERM SIGINT SIGABRT
 installDependencies() {
     local BINS BIN CTR RESPONSE
     echo "Checking dependencies..."
+    rm -f "$SRC/revancify" 2>/dev/null
 
     [ -e "$HOME/storage" ] || termux-setup-storage
 
@@ -155,7 +156,6 @@ fetchSrc() {
     if [ -e "$TAG.zip" ]; then
         unzip -qo "$TAG.zip"
         rm -rf "$TAG.zip"
-        rm -f "$SRC/revancify" 2>/dev/null
         for CONTENT in Revancify-Xisr-*/* Revancify-Xisr-*/.*; do
             rm -rf "${SRC:?}/$(basename "$CONTENT")"
             mv "$CONTENT" "$SRC/"
