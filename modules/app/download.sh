@@ -13,7 +13,7 @@ scrapeAppInfo() {
     if grep -q "apk-download" <<< "$CANONICAL_URL"; then
         URL1="${CANONICAL_URL/"https://www.apkmirror.com/"//}"
     else
-        if [ "$PREFER_SPLIT_APK" == "on" ]; then
+        if [ "$PREFER_SPLIT_APK" == "on" ] && [ "$SOURCE" != "Morphe" ]; then
             APP_FORMAT="BUNDLE"
         else
             APP_FORMAT="APK"
