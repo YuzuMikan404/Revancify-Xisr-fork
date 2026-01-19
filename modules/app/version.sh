@@ -18,7 +18,7 @@ fetchPage() {
             jq -c '[.[].children as $CHILDREN | {
                 version: $CHILDREN[1].children[0].children[1].text,
                 info: $CHILDREN[0].children[0].children[1].children[0].children[0].children[0]
-            } | {
+            } | select(.version != null and .info.text != null and .info.href != null) | {
                 version: .version,
                 tag: (.info.text | ascii_downcase | if test("beta") then "[BETA]" elif test("alpha") then "[ALPHA]" else "[STABLE]" end),
                 url: .info.href
