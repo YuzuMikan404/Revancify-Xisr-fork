@@ -61,12 +61,13 @@ trap terminate SIGTERM SIGINT SIGABRT
 installDependencies() {
     local BINS BIN CTR RESPONSE
     echo "Checking dependencies..."
+    rm -f "$SRC/revancify" 2>/dev/null
 
     [ -e "$HOME/storage" ] || termux-setup-storage
 
     BINS=$(ls "$PREFIX/bin")
     grep -q java <<< "$BINS" || PKGS+=("openjdk-21")
-    grep -q wget <<< "$BINS" || PKGS+=("wget")
+    grep -q wget <<< "$BINS" || PKGS+=("wget" "libandroid-posix-semaphore")
     grep -q tput <<< "$BINS" || PKGS+=("ncurses-utils")
     grep -q dialog <<< "$BINS" || PKGS+=("dialog")
     grep -q pup <<< "$BINS" || PKGS+=("pup")
