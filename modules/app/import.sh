@@ -4,29 +4,48 @@ selectFile() {
     local DIR="/storage/emulated/0/Download"
     
     while :; do
-        local ITEMS=()
+        local MAX_LENGTH=$(( $(tput cols) * 3 / 5 ))
+        local ITEMS=() MENU_ITEMS=()
         [[ "$DIR" != "/storage/emulated/0" ]] && ITEMS+=("...")
         
         readarray -t -O ${#ITEMS[@]} ITEMS < <(
-            find "$DIR" -type f \( -name "*.apk" -o -name "*.apkm" \) 2>/dev/null |
-            sed "s|^$DIR/||" | cut -d'/' -f1 | sort -u
+            {
+                for d in "$DIR"/*/; do
+                    [ -d "$d" ] || continue
+                    d=${d%/}
+                    printf '%s/\n' "${d##*/}"
+                done
+                for f in "$DIR"/*.apk "$DIR"/*.apkm; do
+                    [ -f "$f" ] || continue
+                    printf '%s\n' "${f##*/}"
+                done
+            } | sort -u
         )
-        
-        [[ ${#ITEMS[@]} -eq 0 ]] && { notify msg "No APK files found."; return 1; }
+
+        for ITEM in "${ITEMS[@]}"; do
+            MENU_ITEMS+=("$ITEM")
+            if [[ ${#ITEM} -gt $MAX_LENGTH ]]; then
+                MENU_ITEMS+=("${ITEM:0:MAX_LENGTH-11}…${ITEM: -10}")
+            else
+                MENU_ITEMS+=("$ITEM")
+            fi
+            MENU_ITEMS+=("$ITEM")
+        done
         
         local PICK
         PICK=$(
             "${DIALOG[@]}" \
                 --title '| Import App |' \
-                --no-items \
+                --no-tags \
+                --item-help \
                 --default-item "$([[ "$DIR" != "/storage/emulated/0" ]] && printf '%s' "${ITEMS[1]}" || printf '%s' "${ITEMS[0]}")" \
-                --menu "$NAVIGATION_HINT\n\nCurrent Path: $DIR" -1 -1 0 \
-                "${ITEMS[@]}" \
+                --menu "$NAVIGATION_HINT\n\nCurrent Path: $DIR" $(( $(tput lines) - 3 )) -1 15 \
+                "${MENU_ITEMS[@]}" \
                 2>&1 >/dev/tty
         ) || { TASK="CHOOSE_APP"; return 1; }
         
         [[ "$PICK" == "..." ]] && { DIR=$(dirname "$DIR"); continue; }
-        [[ -d "$DIR/$PICK" ]] && { DIR="$DIR/$PICK"; continue; }
+        [[ -d "$DIR/${PICK%/}" ]] && { DIR="$DIR/${PICK%/}"; continue; }
         
         SELECTED_FILE="$DIR/$PICK"
         return 0
