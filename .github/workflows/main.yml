@@ -21,7 +21,7 @@ jobs:
       - name: Get latest upstream release info
         id: upstream
         env:
-          GH_TOKEN: ${{ github.token }}   # ← ここが必須！これで gh api が動く
+          GH_TOKEN: ${{ github.token }}   # gh api 用
         run: |
           set -euo pipefail
           
@@ -55,22 +55,27 @@ jobs:
           exit 0
 
       - name: Download upstream release archive
+        if: steps.tag_check.outputs.already_exists == 'false'
         run: |
           TAG="${{ steps.upstream.outputs.latest_tag }}"
           ZIP_URL="https://github.com/Xisrr1/Revancify-Xisr/archive/refs/tags/${TAG}.zip"
           curl -L -f -o upstream.zip "$ZIP_URL" || { echo "Failed to download zip from $ZIP_URL"; exit 1; }
-          unzip -q upstream.zip
-          # ディレクトリ名対応を柔軟に（v付き/なし両対応）
+          unzip -q upstream.zip || { echo "Unzip failed"; exit 1; }
+          # ディレクトリ名柔軟対応
           mv Revancify-Xisr-* upstream-source 2>/dev/null || { echo "Failed to find extracted dir"; exit 1; }
 
       - name: Sync files except modules/app/import.sh
+        if: steps.tag_check.outputs.already_exists == 'false'
         id: rsync
         continue-on-error: true
         run: |
           rsync -av --exclude='modules/app/import.sh' --exclude='.git*' --exclude='upstream-source' \
             upstream-source/ ./
+          # 削除されたファイルを反映したい場合: --delete を追加（テスト後有効化）
+          # rsync ... --delete
 
       - name: Check if there are actual changes
+        if: steps.tag_check.outputs.already_exists == 'false'
         id: git_status
         run: |
           git config user.name "GitHub Actions Bot"
@@ -86,21 +91,21 @@ jobs:
           fi
 
       - name: Commit changes (if any)
-        if: steps.git_status.outputs.has_changes == 'true'
+        if: steps.tag_check.outputs.already_exists == 'false' && steps.git_status.outputs.has_changes == 'true'
         run: |
           git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh)" || echo "Nothing to commit"
 
-      - name: Force create/tag and push (always if tag missing or changes)
-        if: steps.git_status.outputs.has_changes == 'true' || steps.tag_check.outputs.already_exists == 'false'
+      - name: Force create/tag and push (if changes or tag missing)
+        if: steps.tag_check.outputs.already_exists == 'false' || steps.git_status.outputs.has_changes == 'true'
         run: |
           TAG="${{ steps.upstream.outputs.latest_tag }}"
           git tag -f "$TAG"
-          git push origin --force "tag $TAG" || { echo "Failed to push tag"; exit 1; }
+          git push origin --force "$TAG" || { echo "Failed to push tag"; exit 1; }
 
       - name: Create or replace GitHub Release
-        if: steps.git_status.outputs.has_changes == 'true' || steps.tag_check.outputs.already_exists == 'false'
+        if: steps.tag_check.outputs.already_exists == 'false' || steps.git_status.outputs.has_changes == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}   # ← ここも必須
+          GH_TOKEN: ${{ github.token }}   # gh release 用
         run: |
           TAG="${{ steps.upstream.outputs.latest_tag }}"
           UPSTREAM_URL="${{ steps.upstream.outputs.upstream_url }}"
@@ -117,7 +122,7 @@ jobs:
           EOF
           )
 
-          # 既存があれば削除（エラー無視）
+          # 既存リリース削除（エラー無視）
           gh release delete "$TAG" --yes 2>/dev/null || true
 
           # リリース作成
