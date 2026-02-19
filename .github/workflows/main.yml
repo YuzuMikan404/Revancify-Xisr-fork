@@ -1,97 +1,132 @@
-name: Daily Upstream Release Sync (except import.sh)
+name: Daily Sync Upstream Release (keep custom import.sh)
 
 on:
   schedule:
-    # 日本時間 夜21:00頃 → UTC 12:00
+    # 日本時間 夜 21:00頃 → UTC 12:00
     - cron: '0 12 * * *'
-  workflow_dispatch:   # 手動実行も可能にする
+  workflow_dispatch:
 
 jobs:
-  check-and-sync:
+  sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # 必須: タグ・リリース作成・push用
+      contents: write   # タグpush・リリース作成に必須
 
     steps:
       - name: Checkout my fork
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # タグも全部取る
+          fetch-depth: 0
 
-      - name: Get latest upstream release
+      - name: Get latest upstream release info
         id: upstream
         env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_PAT }}   # upstream見るだけなら不要でも可だが安全に
+          GH_TOKEN: ${{ github.token }}   # ← ここが必須！これで gh api が動く
         run: |
-          LATEST_TAG=$(gh api repos/Xisrr1/Revancify-Xisr/releases/latest --jq '.tag_name')
-          echo "latest_upstream_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "upstream_release_url=https://github.com/Xisrr1/Revancify-Xisr/releases/tag/$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          
+          LATEST=$(gh api -H "Accept: application/vnd.github+json" \
+            repos/Xisrr1/Revancify-Xisr/releases/latest --jq '.tag_name // empty')
+          
+          if [ -z "$LATEST" ]; then
+            echo "No release found or API error" >&2
+            exit 1
+          fi
+          
+          echo "latest_tag=$LATEST" >> "$GITHUB_OUTPUT"
+          
+          URL="https://github.com/Xisrr1/Revancify-Xisr/releases/tag/$LATEST"
+          echo "upstream_url=$URL" >> "$GITHUB_OUTPUT"
 
-      - name: Check if tag already exists locally
-        id: check_tag
+      - name: Check if tag already exists in my repo (remote)
+        id: tag_check
         run: |
-          if git rev-parse "refs/tags/${{ steps.upstream.outputs.latest_upstream_tag }}" >/dev/null 2>&1; then
+          if git ls-remote --exit-code --tags origin "${{ steps.upstream.outputs.latest_tag }}" >/dev/null 2>&1; then
             echo "already_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.upstream.outputs.latest_tag }} already present → skipping sync"
           else
             echo "already_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip if already synced
-        if: steps.check_tag.outputs.already_exists == 'true'
+      - if: steps.tag_check.outputs.already_exists == 'true'
+        name: Skip entire sync (already up to date)
         run: |
-          echo "Latest tag ${{ steps.upstream.outputs.latest_upstream_tag }} already exists. Skipping."
+          echo "Latest upstream release is already synced. Exiting."
           exit 0
 
-      - name: Download upstream release source code
+      - name: Download upstream release archive
         run: |
-          TAG="${{ steps.upstream.outputs.latest_upstream_tag }}"
-          curl -L -o source.zip "https://github.com/Xisrr1/Revancify-Xisr/archive/refs/tags/${TAG}.zip"
-          unzip -q source.zip
-          mv "Revancify-Xisr-${TAG#v}" upstream-temp   # v1.4.0 → 1.4.0 とかでも対応
+          TAG="${{ steps.upstream.outputs.latest_tag }}"
+          ZIP_URL="https://github.com/Xisrr1/Revancify-Xisr/archive/refs/tags/${TAG}.zip"
+          curl -L -f -o upstream.zip "$ZIP_URL" || { echo "Failed to download zip from $ZIP_URL"; exit 1; }
+          unzip -q upstream.zip
+          # ディレクトリ名対応を柔軟に（v付き/なし両対応）
+          mv Revancify-Xisr-* upstream-source 2>/dev/null || { echo "Failed to find extracted dir"; exit 1; }
 
-      - name: Sync all files except modules/app/import.sh
+      - name: Sync files except modules/app/import.sh
+        id: rsync
+        continue-on-error: true
         run: |
-          # upstream-temp から現在のリポジトリへコピー（import.sh以外）
-          rsync -av --exclude='modules/app/import.sh' upstream-temp/ ./
-          
-          # .gitkeep とか不要ファイルがあれば削除しても良いが基本そのまま
+          rsync -av --exclude='modules/app/import.sh' --exclude='.git*' --exclude='upstream-source' \
+            upstream-source/ ./
 
-      - name: Commit changes if any
-        id: commit
+      - name: Check if there are actual changes
+        id: git_status
         run: |
-          git config user.name "GitHub Actions"
+          git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           
-          git add .
-          if git diff --staged --quiet; then
-            echo "No changes after sync (maybe only import.sh diff). Skipping commit."
+          git add --all
+          if git diff --cached --quiet && git diff --quiet; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No meaningful changes (only import.sh or nothing differs)"
           else
-            git commit -m "chore(sync): update to upstream ${{ steps.upstream.outputs.latest_upstream_tag }} (except modules/app/import.sh)"
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            git diff --cached --stat
           fi
 
-      - name: Force push the same tag
-        if: steps.commit.outputs.has_changes == 'true' || steps.check_tag.outputs.already_exists == 'false'
+      - name: Commit changes (if any)
+        if: steps.git_status.outputs.has_changes == 'true'
         run: |
-          TAG="${{ steps.upstream.outputs.latest_upstream_tag }}"
-          git tag -f "$TAG"
-          git push --force origin "$TAG"
+          git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh)" || echo "Nothing to commit"
 
-      - name: Create or update GitHub Release
-        if: steps.commit.outputs.has_changes == 'true' || steps.check_tag.outputs.already_exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.MY_PAT }}   # 自分のリポジトリにリリース作成できるPAT
+      - name: Force create/tag and push (always if tag missing or changes)
+        if: steps.git_status.outputs.has_changes == 'true' || steps.tag_check.outputs.already_exists == 'false'
         run: |
-          TAG="${{ steps.upstream.outputs.latest_upstream_tag }}"
-          RELEASE_URL="${{ steps.upstream.outputs.upstream_release_url }}"
+          TAG="${{ steps.upstream.outputs.latest_tag }}"
+          git tag -f "$TAG"
+          git push origin --force "tag $TAG" || { echo "Failed to push tag"; exit 1; }
+
+      - name: Create or replace GitHub Release
+        if: steps.git_status.outputs.has_changes == 'true' || steps.tag_check.outputs.already_exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}   # ← ここも必須
+        run: |
+          TAG="${{ steps.upstream.outputs.latest_tag }}"
+          UPSTREAM_URL="${{ steps.upstream.outputs.upstream_url }}"
           
-          # 本文にオリジナルURLを入れる
-          BODY="This is a patched fork of [Revancify-Xisr v${TAG#v}](https://github.com/Xisrr1/Revancify-Xisr/releases/tag/$TAG).\n\nChanges:\n- Reverted malicious/bad changes in modules/app/import.sh (my custom version is kept).\n\nUpstream release: $RELEASE_URL"
-          
-          # 同じタグでリリースを上書き/作成（--prerelease などはupstreamに合わせるなら別途API取得）
-          gh release delete "$TAG" --yes || true
+          BODY=$(cat <<EOF
+          This is an auto-patched fork of upstream release **${TAG}**.
+
+          **Custom patch kept:**
+          - modules/app/import.sh (reverted bad changes from v1.4.0)
+
+          Original upstream release: ${UPSTREAM_URL}
+
+          Synced daily while preserving the fixed import.sh.
+          EOF
+          )
+
+          # 既存があれば削除（エラー無視）
+          gh release delete "$TAG" --yes 2>/dev/null || true
+
+          # リリース作成
           gh release create "$TAG" \
-            --title "v${TAG#v}" \
+            --title "${TAG}" \
             --notes "$BODY" \
-            --target "$(git rev-parse HEAD)"
+            --target "$(git rev-parse HEAD)" || { echo "Failed to create release"; exit 1; }
+
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          rm -rf upstream-source upstream.zip || true
