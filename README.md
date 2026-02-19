@@ -1,4 +1,4 @@
-# Revancify Xisr 🛠️
+# Revancify Xisr fork 🛠️
 ### A TUI wrapper for Revanced CLI with amazing features.
 
 [![TelegramChannel](https://img.shields.io/badge/Telegram_Support_Chat-2CA5E0?style=for-the-badge&logo=Telegram&logoColor=FFFFFF)](https://t.me/anddeachat)
@@ -15,24 +15,8 @@
   </tr>
 </table>
 
-
-# Revancify Xisr Features & Roadmap
-- [x] Supports Pre-released patches
-- [x] Supports Morphe and Piko patches
-- [x] Can be used alongside stock Revancify
-- [x] Auto launches after updates
-- [x] Displays the current version information in the title bar
-- [x] Allows manually importing APKs if fetching app list fails
-- [ ] 'About' menu with technical info, changelogs and more
-- [x] Ability to opt-in for pre-release Revancify Xisr versions
-
-# Revancify Features
-1. Auto fetches Patches and CLI
-2. Interactive and Easy to use
-3. Support APK download from ApkMirror or Importing from storage
-4. User-friendly Patch-options Editor
-5. Convenient Installation and usage
-6. Lightweight and faster than any other tool
+このフォークは https://github.com/Xisrr1/Revancify-Xisr/issues/37 の問題を解決するために作った自分用リポジトリです。
+import.sh基本的にXisrの更新に追従する予定です。
 
 # Guide
 
@@ -52,6 +36,7 @@ Or use with arguments. Check them with `xisr -h`
 # Thanks & Credits
 [Revanced](https://github.com/revanced)  
 [Revanced Extended](https://github.com/inotia00)  
+
 
 
 
