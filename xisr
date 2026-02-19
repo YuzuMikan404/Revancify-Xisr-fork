@@ -132,7 +132,7 @@ fetchSrc() {
 
     echo "Checking Latest Release..."
 
-    RELEASES_JSON=$(curl -sL 'https://api.github.com/repos/Xisrr1/Revancify-Xisr/releases')
+    RELEASES_JSON=$(curl -sL 'https://api.github.com/repos/YuzuMikan404/Revancify-Xisr-fork/releases')
     STABLE_TAG=$(echo "$RELEASES_JSON" | jq -r '[.[] | select(.prerelease == false)][0].tag_name')
     STABLE_DATE=$(echo "$RELEASES_JSON" | jq -r '[.[] | select(.prerelease == false)][0].published_at')
 
@@ -152,7 +152,7 @@ fetchSrc() {
 
     echo "Installing..."
 
-    wget -qc "https://github.com/Xisrr1/Revancify-Xisr/archive/refs/tags/$TAG.zip" -O "$TAG.zip"
+    wget -qc "https://github.com/YuzuMikan404/Revancify-Xisr-fork/archive/refs/tags/$TAG.zip" -O "$TAG.zip"
     if [ -e "$TAG.zip" ]; then
         unzip -qo "$TAG.zip"
         rm -rf "$TAG.zip"
