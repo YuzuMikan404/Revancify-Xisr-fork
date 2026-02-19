@@ -16,7 +16,7 @@
 </table>
 
 このフォークは https://github.com/Xisrr1/Revancify-Xisr/issues/37 の問題を解決するために作った自分用リポジトリです。
-import.sh基本的にXisrの更新に追従する予定です。
+import.sh以外は基本的にXisrの更新に追従する予定です。
 
 # Guide
 
@@ -36,6 +36,7 @@ Or use with arguments. Check them with `xisr -h`
 # Thanks & Credits
 [Revanced](https://github.com/revanced)  
 [Revanced Extended](https://github.com/inotia00)  
+
 
 
 
