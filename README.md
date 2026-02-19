@@ -41,7 +41,7 @@
 2. Open Termux.
 3. Copy and paste this command.
 ```
-curl -sL https://github.com/Xisrr1/Revancify-Xisr/raw/refs/heads/main/install.sh | bash
+curl -sL https://github.com/YuzuMikan404/Revancify-Xisr-fork/raw/refs/heads/main/install.sh | bash
 ```
 
 ## Usage
@@ -52,5 +52,6 @@ Or use with arguments. Check them with `xisr -h`
 # Thanks & Credits
 [Revanced](https://github.com/revanced)  
 [Revanced Extended](https://github.com/inotia00)  
+
 
 
