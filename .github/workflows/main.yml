@@ -2,8 +2,8 @@ name: Daily Sync Upstream Release (keep custom import.sh)
 
 on:
   schedule:
-    # 日本時間 夜 21:00頃 → UTC 12:00
-    - cron: '0 12 * * *'
+    # 日本時間 朝 6:00頃 → UTC 21:00
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 jobs:
