@@ -69,7 +69,7 @@ jobs:
         id: rsync
         continue-on-error: true
         run: |
-          rsync -av --exclude='modules/app/import.sh' --exclude='install.sh' --exclude='.git*' --exclude='upstream-source' \
+          rsync -av --exclude='modules/app/import.sh' --exclude='install.sh' --exclude='xisr' --exclude='.git*' --exclude='upstream-source' \
             upstream-source/ ./
           # 削除されたファイルを反映したい場合: --delete を追加（テスト後有効化）
           # rsync ... --delete
@@ -93,7 +93,7 @@ jobs:
       - name: Commit changes (if any)
         if: steps.tag_check.outputs.already_exists == 'false' && steps.git_status.outputs.has_changes == 'true'
         run: |
-          git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh, install.sh)" || echo "Nothing to commit"
+          git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh, install.sh, xisr)" || echo "Nothing to commit"
 
       - name: Force create/tag and push (if changes or tag missing)
         if: steps.tag_check.outputs.already_exists == 'false' || steps.git_status.outputs.has_changes == 'true'
@@ -116,6 +116,7 @@ jobs:
           **Custom patch kept:**
           - modules/app/import.sh (reverted bad changes from v1.4.0)
           - install.sh (fork version installer)
+          - xisr (fork version main script)
 
           Original upstream release: ${UPSTREAM_URL}
 
