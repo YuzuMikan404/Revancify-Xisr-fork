@@ -64,15 +64,19 @@ jobs:
           # ディレクトリ名柔軟対応
           mv Revancify-Xisr-* upstream-source 2>/dev/null || { echo "Failed to find extracted dir"; exit 1; }
 
-      - name: Sync files except modules/app/import.sh
+      - name: Sync files except modules/app/import.sh and install.sh
         if: steps.tag_check.outputs.already_exists == 'false'
         id: rsync
         continue-on-error: true
         run: |
-          rsync -av --exclude='modules/app/import.sh' --exclude='install.sh' --exclude='xisr' --exclude='.git*' --exclude='upstream-source' \
+          rsync -av --exclude='modules/app/import.sh' --exclude='install.sh' --exclude='.git*' --exclude='upstream-source' \
             upstream-source/ ./
           # 削除されたファイルを反映したい場合: --delete を追加（テスト後有効化）
           # rsync ... --delete
+
+      - name: Patch xisr - replace upstream repo URLs with fork URLs and fix bugs
+        if: steps.tag_check.outputs.already_exists == 'false'
+        run: python3 patch_xisr.py xisr
 
       - name: Check if there are actual changes
         if: steps.tag_check.outputs.already_exists == 'false'
@@ -93,7 +97,7 @@ jobs:
       - name: Commit changes (if any)
         if: steps.tag_check.outputs.already_exists == 'false' && steps.git_status.outputs.has_changes == 'true'
         run: |
-          git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh, install.sh, xisr)" || echo "Nothing to commit"
+          git commit -m "chore(sync): sync upstream ${{ steps.upstream.outputs.latest_tag }} (excluding modules/app/import.sh, install.sh; xisr URLs patched)" || echo "Nothing to commit"
 
       - name: Force create/tag and push (if changes or tag missing)
         if: steps.tag_check.outputs.already_exists == 'false' || steps.git_status.outputs.has_changes == 'true'
@@ -116,7 +120,7 @@ jobs:
           **Custom patch kept:**
           - modules/app/import.sh (reverted bad changes from v1.4.0)
           - install.sh (fork version installer)
-          - xisr (fork version main script)
+          - xisr (URLs auto-patched to fork: Xisrr1/Revancify-Xisr → YuzuMikan404/Revancify-Xisr-fork)
 
           Original upstream release: ${UPSTREAM_URL}
 
