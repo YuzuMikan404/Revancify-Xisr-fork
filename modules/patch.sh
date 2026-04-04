@@ -87,12 +87,60 @@ patchApp() {
         echo -e "Root Access: $ROOT_ACCESS\nArchitecture: $ARCH\nApp: $APP_NAME v$APP_VER\nCLI: $CLI_FILE\nPatches: $PATCHES_FILE\nArguments: ${ARGUMENTS[*]}\n\nLogs:\n" > "$STORAGE/patch_log.txt"
 
         java -jar "$CLI_FILE" patch \
-            -p "$PATCHES_FILE" \
-            --exclusive \
+            --force --exclusive -p "$PATCHES_FILE" \
+            -o "apps/$APP_NAME/$APP_VER-$SOURCE.apk" \
+            "${ARGUMENTS[@]}" \
+            --keystore="$STORAGE/morphe.keystore" \
+            --keystore-password="" \
+            --keystore-entry-alias="Morphe Key" \
+            "apps/$APP_NAME/$APP_VER.apk" |&
+            tee -a "$STORAGE/patch_log.txt" |
+            "${DIALOG[@]}" \
+                --ok-label 'Continue' \
+                --extra-button \
+                --extra-label 'Share Logs' \
+                --cursor-off-label \
+                --programbox "Patching $APP_NAME $APP_VER" -1 -1
+    elif [ "$SOURCE" == "ReVanced" ]; then
+        readarray -t ARGUMENTS < <(
+            jq -nrc --arg PKG_NAME "$PKG_NAME" --argjson ENABLED_PATCHES "$ENABLED_PATCHES" '
+                $ENABLED_PATCHES[] |
+                select(.pkgName == $PKG_NAME) |
+                .options as $OPTIONS |
+                .patches[] |
+                . as $PATCH_NAME |
+                "-e",
+                $PATCH_NAME,
+                (
+                    $OPTIONS[] |
+                    if .patchName == $PATCH_NAME then
+                        "-O" +
+                        .key + "=" +
+                        (
+                            .value |
+                            if . != null then
+                                . | tostring
+                            else
+                                empty
+                            end
+                        )
+                    else
+                        empty
+                    end
+                )
+            '
+        )
+
+        echo -e "Root Access: $ROOT_ACCESS\nArchitecture: $ARCH\nApp: $APP_NAME v$APP_VER\nCLI: $CLI_FILE\nPatches: $PATCHES_FILE\nArguments: ${ARGUMENTS[*]}\n\nLogs:\n" > "$STORAGE/patch_log.txt"
+
+        java -jar "$CLI_FILE" patch \
+            --bypass-verification --force --exclusive -p "$PATCHES_FILE" \
+            -o "apps/$APP_NAME/$APP_VER-$SOURCE.apk" \
             "${ARGUMENTS[@]}" \
             --custom-aapt2-binary="./bin/aapt2" \
-            --keystore="$STORAGE/morphe.keystore" \
-            -o "apps/$APP_NAME/$APP_VER-$SOURCE.apk" \
+            --keystore="$STORAGE/revanced.keystore" \
+            --keystore-password="" \
+            --keystore-entry-alias="ReVanced Key" \
             "apps/$APP_NAME/$APP_VER.apk" |&
             tee -a "$STORAGE/patch_log.txt" |
             "${DIALOG[@]}" \
@@ -139,6 +187,8 @@ patchApp() {
             "${ARGUMENTS[@]}" \
             --custom-aapt2-binary="./bin/aapt2" \
             --keystore="$STORAGE/revanced.keystore" \
+            --keystore-password="" \
+            --keystore-entry-alias="ReVanced Key" \
             "apps/$APP_NAME/$APP_VER.apk" |&
             tee -a "$STORAGE/patch_log.txt" |
             "${DIALOG[@]}" \
