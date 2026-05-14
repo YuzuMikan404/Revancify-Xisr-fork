@@ -2,7 +2,7 @@
 
 fetchAssetsInfo() {
     unset CLI_VERSION CLI_URL CLI_SIZE PATCHES_VERSION PATCHES_URL PATCHES_SIZE JSON_URL SOURCE_TYPE
-    local VERSION PATCHES_API_URL CLI_API_URL REPO VERSION_URL
+    local VERSION PATCHES_API_URL GITLAB_API_URL CLI_API_URL REPO VERSION_URL REVANCED_API_URL
 
     internet || return 1
 
@@ -28,7 +28,16 @@ fetchAssetsInfo() {
             ' sources.json
         )
 
-        [ "$USE_PRE_RELEASE" == "on" ] && JSON_URL=$(sed 's|/refs/heads/[^/]*/|/refs/heads/dev/|' <<< "$JSON_URL")
+        if [ "$USE_PRE_RELEASE" == "on" ]; then
+            case "$JSON_URL" in
+                *"/-/raw/"*)
+                    JSON_URL=$(sed 's|/-/raw/[^/]*/|/-/raw/dev/|' <<< "$JSON_URL")
+                    ;;
+                *"/refs/heads/"*)
+                    JSON_URL=$(sed 's|/refs/heads/[^/]*/|/refs/heads/dev/|' <<< "$JSON_URL")
+                    ;;
+            esac
+        fi
 
         if [ -n "$VERSION_URL" ]; then
             if VERSION=$("${CURL[@]}" "$VERSION_URL" | jq -r '.version' 2> /dev/null); then
@@ -45,6 +54,14 @@ fetchAssetsInfo() {
             fi
         fi
 
+        if [ -n "$VERSION" ]; then
+            GITLAB_API_URL="https://gitlab.com/api/v4/projects/${REPO//\//%2F}/releases/$VERSION"
+        elif [ "$USE_PRE_RELEASE" == "on" ]; then
+            GITLAB_API_URL="https://gitlab.com/api/v4/projects/${REPO//\//%2F}/releases"
+        else
+            GITLAB_API_URL="https://gitlab.com/api/v4/projects/${REPO//\//%2F}/releases/permalink/latest"
+        fi
+
         if ! "${CURL[@]}" "$PATCHES_API_URL" |
             jq -er '
                 (if type == "array" then .[0] else . end) as $RELEASE |
@@ -54,8 +71,38 @@ fetchAssetsInfo() {
                 "PATCHES_URL='\''\($ASSET.browser_download_url)'\''",
                 "PATCHES_SIZE='\''\($ASSET.size|tostring)'\''"
             ' > "assets/$SOURCE/.data" 2> /dev/null; then
-            notify msg "Unable to fetch latest Patches info from API!!\nRetry later."
-            return 1
+            if [ "$SOURCE" == "ReVanced" ]; then
+                if [ "$USE_PRE_RELEASE" == "on" ]; then
+                    REVANCED_API_URL="https://api.revanced.app/v5/patches/prerelease"
+                else
+                    REVANCED_API_URL="https://api.revanced.app/v5/patches"
+                fi
+
+                if ! "${CURL[@]}" "$REVANCED_API_URL" |
+                    jq -er '
+                        "PATCHES_VERSION=\(.version | sub("^v"; ""))",
+                        "PATCHES_URL=\(.download_url)",
+                        "PATCHES_SIZE=0"
+                    ' > "assets/$SOURCE/.data" 2> /dev/null; then
+                    notify msg "Unable to fetch latest Patches info from API!!\nRetry later."
+                    return 1
+                fi
+            elif "${CURL[@]}" "$GITLAB_API_URL" |
+                jq -er '
+                    (if type == "array" then .[0] else . end) as $RELEASE |
+                    ($RELEASE.assets.links | map(select(.name | endswith(".rvp") or endswith(".mpp")))[0]) as $ASSET |
+                    select($ASSET != null) |
+                    "PATCHES_VERSION='\''\($RELEASE.tag_name)'\''",
+                    "PATCHES_URL='\''\($ASSET.direct_asset_url // $ASSET.url)'\''",
+                    "PATCHES_SIZE='\''0'\''"
+                ' > "assets/$SOURCE/.data" 2> /dev/null; then
+                source "assets/$SOURCE/.data"
+                PATCHES_SIZE=$("${CURL[@]}" -I "$PATCHES_URL" | awk 'tolower($1) == "content-length:" { size = $2 } END { print size }' | tr -d '\r')
+                [ -n "$PATCHES_SIZE" ] && setEnv PATCHES_SIZE "$PATCHES_SIZE" update "assets/$SOURCE/.data"
+            else
+                notify msg "Unable to fetch latest Patches info from API!!\nRetry later."
+                return 1
+            fi
         fi
 
         [ -n "$JSON_URL" ] && setEnv JSON_URL "$JSON_URL" init "assets/$SOURCE/.data"
@@ -67,7 +114,11 @@ fetchAssetsInfo() {
                 SOURCE_TYPE="morphe"
                 ;;
             *.rvp)
-                SOURCE_TYPE="revanced"
+                if [ "$SOURCE" == "ReVanced" ]; then
+                    SOURCE_TYPE="revanced"
+                else
+                    SOURCE_TYPE="rvx"
+                fi
                 ;;
         esac
 
@@ -78,6 +129,12 @@ fetchAssetsInfo() {
                 CLI_API_URL="https://api.github.com/repos/MorpheApp/morphe-cli/releases"
             else
                 CLI_API_URL="https://api.github.com/repos/MorpheApp/morphe-cli/releases/latest"
+            fi
+        elif [ "$SOURCE_TYPE" == "rvx" ]; then
+            if [ "$USE_PRE_RELEASE" == "on" ]; then
+                CLI_API_URL="https://api.github.com/repos/inotia00/revanced-cli/releases"
+            else
+                CLI_API_URL="https://api.github.com/repos/inotia00/revanced-cli/releases/latest"
             fi
         else
             if [ "$USE_PRE_RELEASE" == "on" ]; then
@@ -128,7 +185,11 @@ fetchAssets() {
             SOURCE_TYPE="morphe"
             ;;
         *.rvp)
-            SOURCE_TYPE="revanced"
+            if [ "$SOURCE" == "ReVanced" ]; then
+                SOURCE_TYPE="revanced"
+            else
+                SOURCE_TYPE="rvx"
+            fi
             ;;
     esac
 
@@ -142,7 +203,11 @@ fetchAssets() {
                 SOURCE_TYPE="morphe"
                 ;;
             *.rvp)
-                SOURCE_TYPE="revanced"
+                if [ "$SOURCE" == "ReVanced" ]; then
+                    SOURCE_TYPE="revanced"
+                else
+                    SOURCE_TYPE="rvx"
+                fi
                 ;;
         esac
         source "assets/$SOURCE_TYPE-cli.data"
@@ -151,6 +216,9 @@ fetchAssets() {
     if [ "$SOURCE_TYPE" == "morphe" ]; then
         CLI_FILE="assets/Morphe-CLI-$CLI_VERSION.jar"
         [ -e "$CLI_FILE" ] || rm -- assets/Morphe-CLI-* &> /dev/null
+    elif [ "$SOURCE_TYPE" == "rvx" ]; then
+        CLI_FILE="assets/RVX-CLI-$CLI_VERSION.jar"
+        [ -e "$CLI_FILE" ] || rm -- assets/RVX-CLI-* &> /dev/null
     else
         CLI_FILE="assets/ReVanced-CLI-$CLI_VERSION.jar"
         [ -e "$CLI_FILE" ] || rm -- assets/ReVanced-CLI-* &> /dev/null
@@ -177,17 +245,21 @@ fetchAssets() {
     fi
     [ -e "$PATCHES_FILE" ] || rm -- assets/"$SOURCE"/Patches-* &> /dev/null
 
-    CTR=2 && while [ "$PATCHES_SIZE" != "$(stat -c %s "$PATCHES_FILE" 2> /dev/null || echo 0)" ]; do
+    CTR=2 && while { [ "$PATCHES_SIZE" == "0" ] && [ ! -s "$PATCHES_FILE" ]; } || { [ "$PATCHES_SIZE" != "0" ] && [ "$PATCHES_SIZE" != "$(stat -c %s "$PATCHES_FILE" 2> /dev/null || echo 0)" ]; }; do
         if [ $CTR -eq 0 ]; then
             rm "$PATCHES_FILE" &> /dev/null
             notify msg "Oops! Unable to download completely.\n\nRetry or change your Network."
             return 1
         fi
         ((CTR--))
-        "${WGET[@]}" "$PATCHES_URL" -O "$PATCHES_FILE" |&
-            stdbuf -o0 cut -b 63-65 |
-            stdbuf -o0 grep '[0-9]' |
-            "${DIALOG[@]}" --gauge "File    : $(basename "$PATCHES_FILE")\nSize    : $(numfmt --to=iec --format="%0.1f" "$PATCHES_SIZE")\n\nDownloading..." -1 -1 "$(($(($(stat -c %s "$PATCHES_FILE" 2> /dev/null || echo 0) * 100)) / PATCHES_SIZE))"
+        if [ "$PATCHES_SIZE" == "0" ]; then
+            "${WGET[@]}" "$PATCHES_URL" -O "$PATCHES_FILE" &> /dev/null
+        else
+            "${WGET[@]}" "$PATCHES_URL" -O "$PATCHES_FILE" |&
+                stdbuf -o0 cut -b 63-65 |
+                stdbuf -o0 grep '[0-9]' |
+                "${DIALOG[@]}" --gauge "File    : $(basename "$PATCHES_FILE")\nSize    : $(numfmt --to=iec --format="%0.1f" "$PATCHES_SIZE")\n\nDownloading..." -1 -1 "$(($(($(stat -c %s "$PATCHES_FILE" 2> /dev/null || echo 0) * 100)) / PATCHES_SIZE))"
+        fi
         tput civis
     done
 
